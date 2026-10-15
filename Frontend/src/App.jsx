@@ -1,122 +1,135 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import React, { useState, useEffect } from 'react';
+import { api } from './services/api';
+import FounderSignup from './components/FounderSignup';
+import Login from './components/Login';
+import OwnerDashboard from './components/OwnerDashboard';
+import EmployeeDashboard from './components/EmployeeDashboard';
+import AttendanceScanner from './components/AttendanceScanner';
+import { Shield, Sparkles, Loader2 } from 'lucide-react';
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [founderExists, setFounderExists] = useState(null); // null = loading, true/false
+  const [companyName, setCompanyName] = useState('Face Attendance Portal');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [kioskMode, setKioskMode] = useState(false);
+  const [loading, setLoading] = useState(true);
 
+  const checkStatusAndSession = async () => {
+    setLoading(true);
+    try {
+      // 1. Check if boss/founder exists in database
+      const statusRes = await api.getFounderStatus();
+      setFounderExists(statusRes.founder_exists);
+      if (statusRes.company_name) {
+        setCompanyName(statusRes.company_name);
+      }
+
+      // 2. If token exists in storage, verify active session
+      const token = localStorage.getItem('access_token');
+      if (token && statusRes.founder_exists) {
+        try {
+          const profile = await api.getMe();
+          setCurrentUser(profile);
+        } catch {
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('user_profile');
+          setCurrentUser(null);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to check founder status:', err);
+      // Default to false so Founder Signup page is always shown if no boss is confirmed
+      setFounderExists(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    checkStatusAndSession();
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user_profile');
+    setCurrentUser(null);
+    setKioskMode(false);
+  };
+
+  // Loading spinner while checking initial founder status
+  if (loading) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '16px'
+      }}>
+        <Loader2 size={40} className="animate-spin" color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} />
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+          Connecting to AI Facial Verification Portal...
+        </p>
+        <style>{`
+          @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        `}</style>
+      </div>
+    );
+  }
+
+  // 1. STRICT RULE: If no boss is present in DB -> Show Founder Signup Page
+  if (!founderExists) {
+    return (
+      <FounderSignup
+        onSignupSuccess={(newUser) => {
+          setFounderExists(true);
+          setCurrentUser(newUser);
+        }}
+      />
+    );
+  }
+
+  // 2. Kiosk Mode (Face scanner open for checking attendance)
+  if (kioskMode) {
+    return (
+      <div style={{ minHeight: '100vh', padding: '20px 0', background: 'var(--bg-page)' }}>
+        <AttendanceScanner
+          currentUser={currentUser}
+          onBack={() => setKioskMode(false)}
+        />
+      </div>
+    );
+  }
+
+  // 3. Authenticated: Founder / Boss Dashboard
+  if (currentUser && currentUser.role === 'founder') {
+    return (
+      <OwnerDashboard
+        user={currentUser}
+        onLogout={handleLogout}
+        onOpenKiosk={() => setKioskMode(true)}
+      />
+    );
+  }
+
+  // 4. Authenticated: Employee Dashboard
+  if (currentUser && currentUser.role === 'employee') {
+    return (
+      <EmployeeDashboard
+        user={currentUser}
+        onLogout={handleLogout}
+        onOpenKiosk={() => setKioskMode(true)}
+      />
+    );
+  }
+
+  // 5. Unauthenticated: Regular Login Page (Matching Sprout Reference)
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+    <Login
+      companyName={companyName}
+      onLoginSuccess={(user) => setCurrentUser(user)}
+      onOpenKiosk={() => setKioskMode(true)}
+    />
+  );
 }
-
-export default App
